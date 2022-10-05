@@ -13,7 +13,7 @@ from rtvec2extrinsic import *
 
 
 images = Path('datasets/redwood-livingroom/image/')
-outputs_path = 'outputs/test/'
+outputs_path = 'outputs/'
 outputs = Path(outputs_path)
 os.system("rm -rf {}".format(outputs_path))
 sfm_pairs = outputs / 'pairs-sfm.txt'
@@ -28,7 +28,7 @@ matcher_conf = match_features.confs['superglue']
 print("=> Reference files")
 references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])
 references = [references[p] for p in [0, 50, 100, 150, 200]]
-print(len(references), "mapping images")
+print("=> ",len(references), "mapping images")
 # plot_images([read_image(images / r) for r in references[:5]], dpi=50)
 
 print("=> Match features")
@@ -41,11 +41,38 @@ model = reconstruction.main(sfm_dir, images, sfm_pairs, features, matches, image
 
 if model != None:
 
+    image_source_list = ""
+    traj_list = ""
+
+    os.system("rm -rf {}traj.log".format(outputs_path))
+    os.system("rm -rf {}image_source.txt".format(outputs_path))
+
+    os.system("touch {}traj.log".format(outputs_path))
+    os.system("touch {}image_source.txt".format(outputs_path))
+
+    count = 1
     result_list = sorted([i for i in model.images])
     for i in result_list:
         print("IMG: {}".format(model.images[i].name))
         # qw qx qy qz tx ty tz
-        vec = np.append(model.images[i].qvec,model.images[i].tvec)
+        vec = np.append(model.images[i].qvec,model.images[i].tvec / 50)
         print(vec)
         T = rtvec2matrix(vec[0], vec[1], vec[2], vec[3], vec[4], vec[5], vec[6])
-        print(T)
+        traj = "{0} {0} {1}\n{2}\n".format(count-1,count,'\n'.join([' '.join([str(e) for e in row]) for row in T ]))
+        print(traj)
+        traj_list += traj
+
+        image_name = "{}\n".format(model.images[i].name)
+        image_source_list += image_name
+
+        count += 1
+
+    with open("{}traj.log".format(outputs_path), 'w') as f:
+        f.write(traj_list)
+
+    with open("{}image_source.txt".format(outputs_path), 'w') as f:
+        f.write(image_source_list)
+    
+
+    
+
