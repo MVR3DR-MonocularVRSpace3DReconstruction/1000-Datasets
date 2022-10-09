@@ -50,6 +50,21 @@ if model != None:
     os.system("touch {}traj.log".format(outputs_path))
     os.system("touch {}image_source.txt".format(outputs_path))
 
+    from hloc.utils.read_write_model import read_cameras_binary, read_points3D_binary, read_images_binary
+    cam = read_cameras_binary(sfm_dir/'cameras.bin')
+    for c in cam:
+        print(cam[c])
+    print("="*50)
+    img = read_images_binary(sfm_dir/'images.bin')
+    for i in img:
+        print(img[i])
+    print("="*50)
+    points = read_points3D_binary(sfm_dir/'points3D.bin')
+    for p in points:
+        print(points[p])
+    print("="*50)
+    
+    
     count = 1
     result_list = sorted([i for i in model.images])
     for i in result_list:
@@ -57,7 +72,7 @@ if model != None:
         # qw qx qy qz tx ty tz
         vec = np.append(model.images[i].qvec,model.images[i].tvec / 50)
         print(vec)
-        T = rtvec2matrix(vec[0], vec[1], vec[2], vec[3], vec[4], vec[5], vec[6])
+        T = rtvec2matrix(*vec)
         traj = "{0} {0} {1}\n{2}\n".format(count-1,count,'\n'.join([' '.join([str(e) for e in row]) for row in T ]))
         print(traj)
         traj_list += traj
