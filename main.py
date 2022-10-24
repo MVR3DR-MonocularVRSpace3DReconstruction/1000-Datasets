@@ -2,12 +2,12 @@ import os
 import numpy as np
 import hloc
 import tqdm, tqdm.notebook
-tqdm.tqdm = tqdm.notebook.tqdm  # notebook-friendly progress bars
 from pathlib import Path
 
 from hloc import extract_features, match_features, reconstruction, visualization, pairs_from_exhaustive
 from hloc.visualization import plot_images, read_image
 from hloc.utils import viz_3d
+from hloc.utils.read_write_model import read_cameras_binary, read_points3D_binary, read_images_binary
 
 from rtvec2extrinsic import *
 
@@ -22,12 +22,13 @@ sfm_dir = outputs / 'sfm'
 features = outputs / 'features.h5'
 matches = outputs / 'matches.h5'
 
-feature_conf = extract_features.confs['superpoint_aachen']
+# feature_conf = extract_features.confs['superpoint_aachen']
+feature_conf = extract_features.confs['superpoint_inloc']
 matcher_conf = match_features.confs['superglue']
 
 print("=> Reference files")
-references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])
-references = [references[p] for p in [0, 50, 100, 150, 200]]
+references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])[:150]
+# references = [references[p] for p in [0, 50, 100, 150, 200]]
 print("=> ",len(references), "mapping images")
 # plot_images([read_image(images / r) for r in references[:5]], dpi=50)
 
@@ -50,7 +51,7 @@ if model != None:
     os.system("touch {}traj.log".format(outputs_path))
     os.system("touch {}image_source.txt".format(outputs_path))
 
-    from hloc.utils.read_write_model import read_cameras_binary, read_points3D_binary, read_images_binary
+    
     cam = read_cameras_binary(sfm_dir/'cameras.bin')
     for c in cam:
         print(cam[c])
