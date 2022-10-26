@@ -65,11 +65,11 @@ for image in rec.images.values():
     cam_p = o3d.geometry.PointCloud()
     cam_p.points = o3d.utility.Vector3dVector([p[0]])
     cam_p.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
-    print(p[0])
+    print(image.name)
     
     w.add_geometry(image.name+"p", cam_p)
     cam.paint_uniform_color([1.0, 0.0, 0.0])  # red
-    w.add_geometry(image.name, cam)
+    # w.add_geometry(image.name, cam)
 
 w.reset_camera_to_default()
 w.scene_shader = w.UNLIT

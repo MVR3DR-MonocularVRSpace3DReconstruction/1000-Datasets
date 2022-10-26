@@ -2,6 +2,7 @@ import os
 import numpy as np
 import hloc
 import tqdm, tqdm.notebook
+import datetime
 from pathlib import Path
 
 from hloc import extract_features, match_features, reconstruction, visualization, pairs_from_exhaustive
@@ -12,82 +13,105 @@ from hloc.utils.read_write_model import read_cameras_binary, read_points3D_binar
 from rtvec2extrinsic import *
 
 
-images = Path('datasets/redwood-livingroom/image/')
-outputs_path = 'outputs/'
-outputs = Path(outputs_path)
-os.system("rm -rf {}".format(outputs_path))
-sfm_pairs = outputs / 'pairs-sfm.txt'
-loc_pairs = outputs / 'pairs-loc.txt'
-sfm_dir = outputs / 'sfm'
-features = outputs / 'features.h5'
-matches = outputs / 'matches.h5'
+images = Path('inputs/left/')
 
-# feature_conf = extract_features.confs['superpoint_aachen']
-feature_conf = extract_features.confs['superpoint_inloc']
+multiprocess = True
+processTime = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S")
+feature_conf = extract_features.confs['superpoint_inloc'] # ['superpoint_aachen']
 matcher_conf = match_features.confs['superglue']
 
 print("=> Reference files")
-references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])[:150]
-# references = [references[p] for p in [0, 50, 100, 150, 200]]
-print("=> ",len(references), "mapping images")
-# plot_images([read_image(images / r) for r in references[:5]], dpi=50)
+references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])
+n_references = len(references)
+print("=> ",n_references, "mapping images")
 
-print("=> Match features")
-extract_features.main(feature_conf, images, image_list=references, feature_path=features)
-pairs_from_exhaustive.main(sfm_pairs, image_list=references)
-match_features.main(matcher_conf, sfm_pairs, features=features, matches=matches)
+def block_process(block_idx, sid, eid):
+    ref_images = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])[sid:eid]
+    
+    outputs_path = 'outputs/{}/{}'.format(processTime, block_idx)
+    outputs = Path(outputs_path)
+    os.system("rm -rf {}".format(outputs_path))
+    sfm_pairs = outputs / 'pairs-sfm.txt'
+    loc_pairs = outputs / 'pairs-loc.txt'
+    sfm_dir = outputs / 'sfm'
+    features = outputs / 'features.h5'
+    matches = outputs / 'matches.h5'
 
-print("=> Generate model")
-model = reconstruction.main(sfm_dir, images, sfm_pairs, features, matches, image_list=references)
+    print("=> Match features")
+    extract_features.main(feature_conf, images, image_list=ref_images, feature_path=features)
+    pairs_from_exhaustive.main(sfm_pairs, image_list=ref_images)
+    match_features.main(matcher_conf, sfm_pairs, features=features, matches=matches)
 
-if model != None:
+    print("=> Generate model")
+    model = reconstruction.main(sfm_dir, images, sfm_pairs, features, matches, image_list=ref_images)
 
-    image_source_list = ""
-    traj_list = ""
+if multiprocess:
+    import multiprocessing
+    block_size = 120
+    extend_frames = 30 # frames must >= 2
+    MAX_THREAD = min(multiprocessing.cpu_count()-1, 7)
+    
+    import torch.multiprocessing as mp
+    # 注意：这是 "fork" 方法工作所必需的
+    processes = []
+    for idx in range(MAX_THREAD):
+        p = mp.Process(target=block_process, args=(idx, idx*block_size, min((idx+1)*block_size+extend_frames, n_references)))
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()
+        
+else:
+    block_process(0, 0, n_references)
 
-    os.system("rm -rf {}traj.log".format(outputs_path))
-    os.system("rm -rf {}image_source.txt".format(outputs_path))
+# if model != None:
 
-    os.system("touch {}traj.log".format(outputs_path))
-    os.system("touch {}image_source.txt".format(outputs_path))
+#     image_source_list = ""
+#     traj_list = ""
+
+#     os.system("rm -rf {}traj.log".format(outputs_path))
+#     os.system("rm -rf {}image_source.txt".format(outputs_path))
+
+#     os.system("touch {}traj.log".format(outputs_path))
+#     os.system("touch {}image_source.txt".format(outputs_path))
 
     
-    cam = read_cameras_binary(sfm_dir/'cameras.bin')
-    for c in cam:
-        print(cam[c])
-    print("="*50)
-    img = read_images_binary(sfm_dir/'images.bin')
-    for i in img:
-        print(img[i])
-    print("="*50)
-    points = read_points3D_binary(sfm_dir/'points3D.bin')
-    for p in points:
-        print(points[p])
-    print("="*50)
+#     cam = read_cameras_binary(sfm_dir/'cameras.bin')
+#     for c in cam:
+#         print(cam[c])
+#     print("="*50)
+#     img = read_images_binary(sfm_dir/'images.bin')
+#     for i in img:
+#         print(img[i])
+#     print("="*50)
+#     points = read_points3D_binary(sfm_dir/'points3D.bin')
+#     for p in points:
+#         print(points[p])
+#     print("="*50)
     
     
-    count = 1
-    result_list = sorted([i for i in model.images])
-    for i in result_list:
-        print("IMG: {}".format(model.images[i].name))
-        # qw qx qy qz tx ty tz
-        vec = np.append(model.images[i].qvec,model.images[i].tvec / 50)
-        print(vec)
-        T = rtvec2matrix(*vec)
-        traj = "{0} {0} {1}\n{2}\n".format(count-1,count,'\n'.join([' '.join([str(e) for e in row]) for row in T ]))
-        print(traj)
-        traj_list += traj
+#     count = 1
+#     result_list = sorted([i for i in model.images])
+#     for i in result_list:
+#         print("IMG: {}".format(model.images[i].name))
+#         # qw qx qy qz tx ty tz
+#         vec = np.append(model.images[i].qvec,model.images[i].tvec / 50)
+#         print(vec)
+#         T = rtvec2matrix(*vec)
+#         traj = "{0} {0} {1}\n{2}\n".format(count-1,count,'\n'.join([' '.join([str(e) for e in row]) for row in T ]))
+#         print(traj)
+#         traj_list += traj
 
-        image_name = "{}\n".format(model.images[i].name)
-        image_source_list += image_name
+#         image_name = "{}\n".format(model.images[i].name)
+#         image_source_list += image_name
 
-        count += 1
+#         count += 1
 
-    with open("{}traj.log".format(outputs_path), 'w') as f:
-        f.write(traj_list)
+#     with open("{}traj.log".format(outputs_path), 'w') as f:
+#         f.write(traj_list)
 
-    with open("{}image_source.txt".format(outputs_path), 'w') as f:
-        f.write(image_source_list)
+#     with open("{}image_source.txt".format(outputs_path), 'w') as f:
+#         f.write(image_source_list)
     
 
     
