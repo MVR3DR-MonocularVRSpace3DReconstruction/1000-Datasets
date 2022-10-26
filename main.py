@@ -1,4 +1,5 @@
 import os
+from tkinter.tix import MAX
 import numpy as np
 import hloc
 import tqdm, tqdm.notebook
@@ -13,7 +14,7 @@ from hloc.utils.read_write_model import read_cameras_binary, read_points3D_binar
 from rtvec2extrinsic import *
 
 
-images = Path('inputs/left/')
+images = Path('inputs/redwood-livingroom/image/')
 
 multiprocess = True
 processTime = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S")
@@ -25,14 +26,14 @@ references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir(
 n_references = len(references)
 print("=> ",n_references, "mapping images")
 
-def block_process(block_idx, sid, eid):
+def sfm_reconstruction(block_idx, sid, eid):
     ref_images = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])[sid:eid]
     
     outputs_path = 'outputs/{}/{}'.format(processTime, block_idx)
     outputs = Path(outputs_path)
     os.system("rm -rf {}".format(outputs_path))
     sfm_pairs = outputs / 'pairs-sfm.txt'
-    loc_pairs = outputs / 'pairs-loc.txt'
+    # loc_pairs = outputs / 'pairs-loc.txt'
     sfm_dir = outputs / 'sfm'
     features = outputs / 'features.h5'
     matches = outputs / 'matches.h5'
@@ -43,26 +44,42 @@ def block_process(block_idx, sid, eid):
     match_features.main(matcher_conf, sfm_pairs, features=features, matches=matches)
 
     print("=> Generate model")
-    model = reconstruction.main(sfm_dir, images, sfm_pairs, features, matches, image_list=ref_images)
+    reconstruction.main(sfm_dir, images, sfm_pairs, features, matches, image_list=ref_images)
 
+def batch_process(blocks):
+    print("=>",blocks)
+    for block_idx in blocks:
+        if block_idx == -1: break
+        sid = block_idx*block_size
+        eid = min((block_idx+1)*block_size+extend_frames, n_references)
+        sfm_reconstruction(block_idx, sid, eid)
+        
 if multiprocess:
+    import math
     import multiprocessing
     block_size = 120
     extend_frames = 30 # frames must >= 2
     MAX_THREAD = min(multiprocessing.cpu_count()-1, 7)
-    
+    n_blocks = math.ceil(n_references/block_size)
+    print("=> MAX THREAD {}// Total {} blocks {} per block".format(MAX_THREAD,n_blocks,block_size))
+    thread_distribution = np.array([idx for idx in range(n_blocks)] + \
+        [ -1 for _ in range(math.ceil(n_blocks/MAX_THREAD)*MAX_THREAD-n_blocks)]).reshape(-1, MAX_THREAD).T
+    print("=> Thread distribution:\n", thread_distribution)
     import torch.multiprocessing as mp
     # 注意：这是 "fork" 方法工作所必需的
     processes = []
+    
     for idx in range(MAX_THREAD):
-        p = mp.Process(target=block_process, args=(idx, idx*block_size, min((idx+1)*block_size+extend_frames, n_references)))
+        # print(thread_distribution[idx])
+        p = mp.Process(target=batch_process, args=(thread_distribution[idx], ))
         p.start()
         processes.append(p)
+        
     for p in processes:
         p.join()
         
 else:
-    block_process(0, 0, n_references)
+    sfm_reconstruction(0, 0, n_references)
 
 # if model != None:
 
