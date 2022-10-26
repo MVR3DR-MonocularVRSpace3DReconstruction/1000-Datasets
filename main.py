@@ -19,7 +19,7 @@ images = Path('inputs/redwood-livingroom/image/')
 multiprocess = True
 processTime = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S")
 feature_conf = extract_features.confs['superpoint_inloc'] # ['superpoint_aachen']
-matcher_conf = match_features.confs['superglue']
+matcher_conf = match_features.confs['superglue-fast'] #  'superglue-fast'   'superglue'  'NN-superpoint' 'NN-ratio'  'NN-mutual'
 
 print("=> Reference files")
 references = sorted([p.relative_to(images).as_posix() for p in (images).iterdir()])
@@ -54,11 +54,12 @@ def batch_process(blocks):
         eid = min((block_idx+1)*block_size+extend_frames, n_references)
         sfm_reconstruction(block_idx, sid, eid)
         
+block_size = 120
+extend_frames = 30 # frames must >= 2        
 if multiprocess:
     import math
     import multiprocessing
-    block_size = 120
-    extend_frames = 30 # frames must >= 2
+    
     MAX_THREAD = min(multiprocessing.cpu_count()-1, 7)
     n_blocks = math.ceil(n_references/block_size)
     print("=> MAX THREAD {}// Total {} blocks {} per block".format(MAX_THREAD,n_blocks,block_size))
@@ -79,7 +80,10 @@ if multiprocess:
         p.join()
         
 else:
-    sfm_reconstruction(0, 0, n_references)
+    for idx in range(n_references//block_size):
+        sid = idx*block_size
+        eid = min((idx+1)*block_size+extend_frames, n_references)
+        sfm_reconstruction(0, 0, n_references[sid:eid])
 
 # if model != None:
 
