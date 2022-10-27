@@ -1,4 +1,5 @@
 import os
+import glob
 from collections import defaultdict
 from copy import deepcopy
 from turtle import color
@@ -7,10 +8,6 @@ from matplotlib import cm
 import open3d as o3d
 import open3d.visualization as vis
 import pycolmap
-
-print(o3d.__version__)
-os.environ['WEBRTC_PORT'] = '8890'
-# o3d.visualization.webrtc_server.enable_webrtc()
 
 def pcd_from_colmap(rec, min_track_length=4, max_reprojection_error=8):
     points = []
@@ -34,46 +31,51 @@ def add_point(pcd, point):
 
     return pcd
     
-app = vis.gui.Application.instance
-app.initialize()
-w = vis.O3DVisualizer(width=2048, height=1024)
-w.show_ground = False
-w.show_axes = False
-mat = o3d.visualization.rendering.MaterialRecord()
-mat.shader = "defaultUnlit"
 
-rec = pycolmap.Reconstruction('outputs/sfm/')
-print(rec.summary())
+blocks_dir = sorted(glob.glob('outputs/22-10-27_01-50-20/*'))
 
-# Add sparse point cloud
-pcd = pcd_from_colmap(rec)
-w.add_geometry('pcd', pcd, mat)
+for dir in blocks_dir:
+    app = vis.gui.Application.instance
+    app.initialize()
+    w = vis.O3DVisualizer(width=2048, height=1024)
+    w.show_ground = False
+    w.show_axes = False
+    mat = o3d.visualization.rendering.MaterialRecord()
+    mat.shader = "defaultUnlit"
 
-# Define the camera frustums as lines
-camera_lines = {}
-for camera in rec.cameras.values():
-    camera_lines[camera.camera_id] = o3d.geometry.LineSet.create_camera_visualization(
-        camera.width, camera.height, camera.calibration_matrix(), np.eye(4), scale=1)
+    rec = pycolmap.Reconstruction(dir+'/sfm')
+    # print(rec.summary())
 
-# Draw the frustum for each image
-for image in rec.images.values():
-    T = np.eye(4)
-    T[:3, :4] = image.inverse_projection_matrix()
-    cam = deepcopy(camera_lines[image.camera_id]).transform(T)
+    # Add sparse point cloud
+    pcd = pcd_from_colmap(rec)
+    w.add_geometry('pcd', pcd, mat)
+
+    # Define the camera frustums as lines
+    camera_lines = {}
+    for camera in rec.cameras.values():
+        camera_lines[camera.camera_id] = o3d.geometry.LineSet.create_camera_visualization(
+            camera.width, camera.height, camera.calibration_matrix(), np.eye(4), scale=1)
     
-    p = np.array(cam.points)
-    cam_p = o3d.geometry.PointCloud()
-    cam_p.points = o3d.utility.Vector3dVector([p[0]])
-    cam_p.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
-    print(image.name)
     
-    w.add_geometry(image.name+"p", cam_p)
-    cam.paint_uniform_color([1.0, 0.0, 0.0])  # red
-    # w.add_geometry(image.name, cam)
+    # Draw the frustum for each image
+    for image in rec.images.values():
+        T = np.eye(4)
+        T[:3, :4] = image.inverse_projection_matrix()
+        cam = deepcopy(camera_lines[image.camera_id]).transform(T)
+        
+        p = np.array(cam.points)
+        cam_p = o3d.geometry.PointCloud()
+        cam_p.points = o3d.utility.Vector3dVector([p[0]])
+        cam_p.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
+        print(image.name)
+        
+        w.add_geometry(image.name+"p", cam_p)
+        cam.paint_uniform_color([1.0, 0.0, 0.0])  # red
+        # w.add_geometry(image.name, cam)
 
-w.reset_camera_to_default()
-w.scene_shader = w.UNLIT
-w.point_size = 5
-w.enable_raw_mode(True)
-app.add_window(w)
-app.run()
+    w.reset_camera_to_default()
+    w.scene_shader = w.UNLIT
+    w.point_size = 5
+    w.enable_raw_mode(True)
+    app.add_window(w)
+    app.run()
